@@ -38,6 +38,7 @@ _POW: "^"|"**"
         | "(" sum ")"
         | expectation
         | call
+        | maximization
         | variable
 
 !symbol: NAME -> symbol
@@ -50,8 +51,13 @@ subperiod: INT | NAME
 !cname: NAME -> name
 ?date_index: "t" SIGNED_INT2 -> date
     | SIGNED_INT -> date
-?call: FUNCTION "(" sum ")" -> call
+    | PERCH_TAG -> date
+?call: (FUNCTION|EFUNCTION) "(" sum ")" -> call
+maximization: MAXIMIZE "{" formula "}" -> maximization
 FUNCTION: "sin"|"cos"|"exp"|"log"
+EFUNCTION: /E_[A-Za-z][A-Za-z0-9_]*/
+MAXIMIZE: /max_[A-Za-z][A-Za-z0-9_]*/
+PERCH_TAG: /_[A-Za-z][A-Za-z0-9_]*/
 
 SIGNED_INT2: ("+"|"-") INT
 

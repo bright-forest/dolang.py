@@ -1,5 +1,5 @@
 from dolang.version import __version_info__, __version__
-from dolang.yaml_tools import yaml
+import yaml
 
 from dolang.grammar import parse_string
 from dolang.grammar import (

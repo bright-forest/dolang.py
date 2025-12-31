@@ -10,26 +10,32 @@ def test_syntax_errors():
     txt = open(DATA_PATH, "rt", encoding="utf-8").read()
     data = yaml.compose(txt)
 
+    from dolang.yaml_nodes import mapping_get_required, sequence_values
+
+    equations = mapping_get_required(data, "equations")
+
     try:
-        parse_string(data["equations"]["list"][1], start="equation")
+        list_node = mapping_get_required(equations, "list")
+        parse_string(sequence_values(list_node)[1], start="equation")
     except Exception as e:
         assert e.line == 13
         assert e.column == 29
 
     try:
-        parse_string(data["equations"]["block"], start="equation_block")
+        parse_string(mapping_get_required(equations, "block"), start="equation_block")
     except Exception as e:
         assert e.line == 17
         assert e.column == 29
 
     try:
-        parse_string(data["equations"]["block2"], start="equation_block")
+        parse_string(mapping_get_required(equations, "block2"), start="equation_block")
     except Exception as e:
         assert e.line == 25
         assert e.column == 29
 
     try:
-        parse_string(data["equations"]["inline"][1], start="equation")
+        inline_node = mapping_get_required(equations, "inline")
+        parse_string(sequence_values(inline_node)[1], start="equation")
     except Exception as e:
         assert e.line == 27
         assert e.column == 26
@@ -51,7 +57,10 @@ def test_variable_definitions_errors():
     txt = open(DATA_PATH, "rt", encoding="utf-8").read()
     data = yaml.compose(txt)
 
-    for v in (data["definitions"]).value:
+    from dolang.yaml_nodes import mapping_get_required
+
+    definitions = mapping_get_required(data, "definitions")
+    for v in definitions.value:
         k = v[0]
         v = v[1].value
         if v == "None":

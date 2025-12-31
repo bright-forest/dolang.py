@@ -69,7 +69,25 @@ def parse_string(text, start=None):
                 i2 = text.end_mark.pointer
                 txt = buffer[i1:i2]
                 if text.style in (">", "|"):
+                    # Drop the block-scalar indicator line (`|` or `>`) and anything
+                    # on that same line (including inline YAML comments).
+                    #
+                    # Example YAML:
+                    #   equations:
+                    #     transition: |  # comment
+                    #       x[t] = ...
+                    #
+                    # The raw buffer slice starts at the `|`, so after removing it we
+                    # still have `"  # comment\n  x[t] = ..."` which must not be fed
+                    # to the dolang grammar. We keep only the content after the first newline.
                     txt = txt[1:]
+                    nl = txt.find("\n")
+                    if nl != -1:
+                        # Preserve a leading newline so line numbers still align
+                        # with the YAML buffer (the indicator line counts as a line).
+                        txt = "\n" + txt[nl + 1 :]
+                    else:
+                        txt = "\n"
 
     else:
         txt = text
@@ -127,15 +145,24 @@ class Printer(Interpreter):
             sp = subperiod[0].children[0].value
             return f"{name}[t${sp}]"
 
+        # Vanilla dolang parses `x[t]` as a variable without an explicit date child.
+        if len(tree.children) < 2:
+            raw = "0"
+        else:
+            raw = tree.children[1].children[0].value
+
+        # Dolo timing (numeric indices) prints as v[t+k].
         try:
-            time = int(tree.children[1].children[0].value)
-        except:
-            time = 0
+            time = int(raw)
+        except Exception:
+            # Dolo+ perch tags (e.g. `_dcsn`) print as-is: v[_dcsn].
+            return f"{name}[{raw}]"
+
         if time == 0:
             ds = "t"
         elif time > 0:
             ds = "t+" + str(time)
-        elif time < 0:
+        else:
             ds = "t-" + str(-time)
         return f"{name}[{ds}]"
 
@@ -178,6 +205,13 @@ class Printer(Interpreter):
         funname = tree.children[0].value
         args = self.visit(tree.children[1])
         return f"{funname}({args})"
+
+    def maximization(self, tree):
+        """Pretty-print Dolo+ binder syntax like `max_c{...}`."""
+
+        funname = tree.children[0].value  # e.g. "max_c"
+        body = self.visit(tree.children[1])
+        return f"{funname}{{{body}}}"
 
     def pow(self, tree):
         arg1 = self.visit(tree.children[0])
@@ -314,10 +348,16 @@ class TimeShifter(Transformer):
     def variable(self, children):
 
         name = children[0].children[0].value
+        # Vanilla dolang parses `x[t]` as a variable without an explicit date child.
+        if len(children) < 2:
+            raw = "0"
+        else:
+            raw = children[1].children[0].value
         try:
-            date = int(children[1].children[0].value)
-        except:
-            date = 0
+            date = int(raw)
+        except Exception:
+            # Dolo+ perch tags are not time-shifted here (leave unchanged).
+            return Tree("variable", children)
         if self.shift == "S":
             new_date = "0"
         else:
@@ -333,7 +373,8 @@ class TimeShifter(Transformer):
 
 @dataclass
 class SymbolList(dict):
-    variables: List[Tuple[str, int]]
+    # date index can be an int (vanilla Dolo timing) or a string (Dolo+ perch tags)
+    variables: List[Tuple[str, int | str]]
     parameters: List[str]
     functions: List[str]
 
@@ -348,7 +389,11 @@ class VariablesLister(Visitor):
         children = tree.children
 
         name = children[0].children[0].value
-        date = int(children[1].children[0].value)
+        raw = children[1].children[0].value
+        try:
+            date: int | str = int(raw)
+        except Exception:
+            date = raw
         if (name, date) not in self.result.variables:
             self.result.variables.append((name, date))
 
