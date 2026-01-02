@@ -101,3 +101,4 @@ def to_str_keyed_dict(m: Any) -> dict[str, Any]:
 
     return {k: v for k, v in mapping_items(m)}
 
+

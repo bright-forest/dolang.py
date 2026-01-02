@@ -58,6 +58,158 @@ def test_expectation():
     print(str_expression(e))
 
 
+def test_expectation_bracket_form():
+    """Test bracket form: E[...] and 𝔼[...]"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # E[...] form
+    e = parse_string("E[x]")
+    assert e.data == "expectation"
+    assert len(e.children) == 1  # just the formula
+    s = str_expression(e)
+    assert s == "𝔼[x]"
+
+    # 𝔼[...] form
+    e = parse_string("𝔼[V[t+1]]")
+    assert e.data == "expectation"
+    s = str_expression(e)
+    assert "𝔼[" in s
+
+
+def test_expectation_subscript_form():
+    """Test new subscript form: E_{y}(...) and E_{y,z}(...)"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # Single variable: E_{y}(...)
+    e = parse_string("E_{y}(V[t])")
+    assert e.data == "expectation"
+    assert len(e.children) == 2  # exp_var_list and formula
+    # First child should be exp_var_list with ["y"]
+    assert e.children[0].data == "exp_var_list"
+    assert e.children[0].children[0].value == "y"
+    s = str_expression(e)
+    assert s == "E_{y}(V[t])"
+
+    # Multiple variables: E_{y,z}(...)
+    e = parse_string("E_{y,z}(V[t] + x)")
+    assert e.data == "expectation"
+    assert len(e.children) == 2
+    var_list = e.children[0]
+    assert var_list.data == "exp_var_list"
+    assert len(var_list.children) == 2
+    assert var_list.children[0].value == "y"
+    assert var_list.children[1].value == "z"
+    s = str_expression(e)
+    assert s == "E_{y,z}(V[t] + x)"
+
+
+def test_expectation_legacy_form():
+    """Test legacy function form: E_y(...) normalizes to expectation node"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # E_y(...) should now be an expectation node, not a call
+    e = parse_string("E_y(V[t])")
+    assert e.data == "expectation"
+    # Legacy form has EFUNCTION token + formula
+    assert len(e.children) == 2
+    s = str_expression(e)
+    # Should print in normalized form
+    assert s == "E_{y}(V[t])"
+
+    # E_shock(...) with longer name
+    e = parse_string("E_shock(dV[t+1])")
+    assert e.data == "expectation"
+    s = str_expression(e)
+    assert s == "E_{shock}(dV[t+1])"
+
+
+def test_expectation_unicode_subscript():
+    """Test unicode subscript form: 𝔼_{y}(...)"""
+    from dolang.symbolic import parse_string, str_expression
+
+    e = parse_string("𝔼_{y}(V[t])")
+    assert e.data == "expectation"
+    s = str_expression(e)
+    assert "E_{y}" in s or "𝔼" in s  # depends on printer output
+
+
+def test_expectation_in_expression():
+    """Test expectation within larger expressions"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # Expectation in assignment
+    e = parse_string("V[t] = E_{y}(V[t+1])")
+    s = str_expression(e)
+    assert "E_{y}" in s
+
+    # Expectation with arithmetic
+    e = parse_string("r * E_{y}(dV[t])")
+    s = str_expression(e)
+    assert "E_{y}" in s
+
+
+def test_maximization_subscript_form():
+    """Test new subscript form: max_{c}(...) and max_{c,a}(...)"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # Single variable: max_{c}(...)
+    e = parse_string("max_{c}(c^2 + V[t+1])")
+    assert e.data == "maximization"
+    assert len(e.children) == 2  # max_var_list and formula
+    # First child should be max_var_list with ["c"]
+    assert e.children[0].data == "max_var_list"
+    assert e.children[0].children[0].value == "c"
+    s = str_expression(e)
+    assert "max_{c}" in s
+
+    # Multiple variables: max_{c,a}(...)
+    e = parse_string("max_{c,a}(c + a + V[t+1])")
+    assert e.data == "maximization"
+    assert len(e.children) == 2
+    var_list = e.children[0]
+    assert var_list.data == "max_var_list"
+    assert len(var_list.children) == 2
+    assert var_list.children[0].value == "c"
+    assert var_list.children[1].value == "a"
+    s = str_expression(e)
+    assert "max_{c,a}" in s
+
+
+def test_maximization_legacy_form():
+    """Test legacy brace form: max_c{...} normalizes to maximization node"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # max_c{...} should be a maximization node
+    e = parse_string("max_c{c^2 + V[t]}")
+    assert e.data == "maximization"
+    # Legacy form has MAXIMIZE token + formula
+    assert len(e.children) == 2
+    s = str_expression(e)
+    # Should print in normalized form
+    assert "max_{c}" in s
+
+    # max_ab{...} with longer name
+    e = parse_string("max_ab{x + y}")
+    assert e.data == "maximization"
+    s = str_expression(e)
+    assert s == "max_{ab}(x + y)"
+
+
+def test_maximization_in_expression():
+    """Test maximization within larger expressions"""
+    from dolang.symbolic import parse_string, str_expression
+
+    # Maximization in assignment (Bellman equation)
+    e = parse_string("V[t] = max_{c}(c^2 + beta*V[t+1])")
+    s = str_expression(e)
+    assert "max_{c}" in s
+
+    # Maximization with arithmetic
+    e = parse_string("beta * max_{c}(c + r)")
+    s = str_expression(e)
+    assert "max_{c}" in s
+
+
 def test_parse_string():
     from dolang.symbolic import parse_string
 

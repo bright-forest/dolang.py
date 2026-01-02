@@ -206,12 +206,37 @@ class Printer(Interpreter):
         args = self.visit(tree.children[1])
         return f"{funname}({args})"
 
-    def maximization(self, tree):
-        """Pretty-print Dolo+ binder syntax like `max_c{...}`."""
+    def max_var_list(self, tree):
+        """Extract variable names from max_var_list node."""
+        return [c.value for c in tree.children]
 
-        funname = tree.children[0].value  # e.g. "max_c"
-        body = self.visit(tree.children[1])
-        return f"{funname}{{{body}}}"
+    def maximization(self, tree):
+        """Pretty-print maximization in one of two forms:
+        1. Subscript form: max_{c,a}(...) → children = [max_var_list, formula]
+        2. Legacy brace form: max_c{...} → children = [Token(MAXIMIZE), formula]
+        """
+        children = tree.children
+
+        if len(children) == 2:
+            first = children[0]
+            body = self.visit(children[1])
+
+            if isinstance(first, Token) and first.type == "MAXIMIZE":
+                # Legacy brace form: max_c{formula} → normalize to max_{c}(...)
+                # Extract variable name from max_c, max_ab, etc.
+                varname = first.value[4:]  # strip "max_" prefix
+                return f"max_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "max_var_list":
+                # Subscript form: max_{c,a}(formula)
+                vars_ = self.max_var_list(first)
+                inside = ",".join(vars_)
+                return f"max_{{{inside}}}({body})"
+            else:
+                # Fallback
+                return f"max{{???}}({body})"
+        else:
+            # Unexpected structure
+            return f"max{{???}}"
 
     def pow(self, tree):
         arg1 = self.visit(tree.children[0])
@@ -228,9 +253,42 @@ class Printer(Interpreter):
         a = self.visit(tree.children[0])
         return f"-({a})"
 
+    def exp_var_list(self, tree):
+        """Extract variable names from exp_var_list node."""
+        return [c.value for c in tree.children]
+
     def expectation(self, tree):
-        a = self.visit(tree.children[0])
-        return f"𝔼[ {a} ]"
+        """Pretty-print expectation in one of three forms:
+        1. Bracket form: E[...] → children = [formula]
+        2. Subscript form: E_{y,z}(...) → children = [exp_var_list, formula]
+        3. Legacy function form: E_y(...) → children = [Token(EFUNCTION), formula]
+        """
+        children = tree.children
+
+        if len(children) == 1:
+            # Bracket form: E[formula]
+            body = self.visit(children[0])
+            return f"𝔼[{body}]"
+        elif len(children) == 2:
+            first = children[0]
+            body = self.visit(children[1])
+
+            if isinstance(first, Token) and first.type == "EFUNCTION":
+                # Legacy function form: E_y(formula) → normalize to E_{y}(...)
+                # Extract variable name from E_y, E_shock, etc.
+                varname = first.value[2:]  # strip "E_" prefix
+                return f"E_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "exp_var_list":
+                # Subscript form: E_{y,z}(formula)
+                vars_ = self.exp_var_list(first)
+                inside = ",".join(vars_)
+                return f"E_{{{inside}}}({body})"
+            else:
+                # Fallback
+                return f"𝔼[{body}]"
+        else:
+            # Unexpected structure
+            return f"𝔼[???]"
 
     def inequality(self, tree):
         a = self.visit(tree.children[0])

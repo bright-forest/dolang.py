@@ -42,7 +42,34 @@ _POW: "^"|"**"
         | variable
 
 !symbol: NAME -> symbol
-expectation: ("E["|"𝔼[") formula "]" -> expectation
+
+// --- Expectation openers (HIGH priority to prevent NAME from grabbing E_ prefix) ---
+_EOPEN.2: "E[" | "𝔼["
+_EUSCORE.2: "E_" | "𝔼_"
+
+// helper for the variable list inside { ... }
+exp_var_list: NAME ("," NAME)*   -> exp_var_list
+
+// Expectation rule with three forms:
+// 1. Bracket form: E[...] or 𝔼[...]
+// 2. Subscript form: E_{y,z}(...) or 𝔼_{y,z}(...)
+// 3. Legacy function form: E_y(...) - normalized to expectation
+expectation: _EOPEN formula "]"                              -> expectation
+    | _EUSCORE "{" exp_var_list "}" "(" formula ")"          -> expectation
+    | EFUNCTION "(" formula ")"                              -> expectation
+
+// --- Maximization opener (HIGH priority to prevent NAME from grabbing max_ prefix) ---
+_MAXUSCORE.2: "max_"
+
+// helper for the variable list inside { ... }
+max_var_list: NAME ("," NAME)*   -> max_var_list
+
+// Maximization rule with two forms:
+// 1. Subscript form: max_{c}(...) or max_{c,a}(...)
+// 2. Legacy brace form: max_c{...} - normalized to maximization
+maximization: _MAXUSCORE "{" max_var_list "}" "(" formula ")"  -> maximization
+    | MAXIMIZE "{" formula "}"                                  -> maximization
+
 variable: cname  "[" date_index "]" -> variable
         | cname "[" "t" "]" -> variable
         | cname "(" date_index ")" -> variable
@@ -52,8 +79,7 @@ subperiod: INT | NAME
 ?date_index: "t" SIGNED_INT2 -> date
     | SIGNED_INT -> date
     | PERCH_TAG -> date
-?call: (FUNCTION|EFUNCTION) "(" sum ")" -> call
-maximization: MAXIMIZE "{" formula "}" -> maximization
+?call: FUNCTION "(" sum ")" -> call
 FUNCTION: "sin"|"cos"|"exp"|"log"
 EFUNCTION: /E_[A-Za-z][A-Za-z0-9_]*/
 MAXIMIZE: /max_[A-Za-z][A-Za-z0-9_]*/
