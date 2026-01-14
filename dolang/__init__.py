@@ -10,3 +10,6 @@ from dolang.grammar import (
     steady_state,
 )
 from dolang.grammar import str_expression
+
+# DDSL registry (v0.1c)
+from dolang import registry
