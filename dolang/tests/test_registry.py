@@ -88,6 +88,8 @@ class TestConstructors:
     def test_is_constructor(self):
         assert is_constructor("ClOp") is True
         assert is_constructor("OpCl") is True
+        assert is_constructor("linspace") is True
+        assert is_constructor("linspacec") is True
         assert is_constructor("Unknown") is False
 
     def test_get_constructor_unknown(self):

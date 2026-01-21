@@ -78,6 +78,16 @@ constructors:
     arity: 2
     arg_kinds: ["scalar", "scalar"]
     description: "Open interval (a,b)"
+  "linspace":
+    kind: domain_constructor
+    arity: 3
+    arg_kinds: ["scalar", "scalar", "scalar"]
+    description: "Linear grid constructor linspace(min, max, n) (Dolo+ convenience)"
+  "linspacec":
+    kind: domain_constructor
+    arity: 3
+    arg_kinds: ["scalar", "scalar", "scalar"]
+    description: "Linear grid constructor (closed) linspacec(min, max, n) (Dolo+ convenience)"
 
 # Aliases: alias -> canonical
 aliases:

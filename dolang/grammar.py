@@ -283,6 +283,13 @@ class Printer(Interpreter):
                 vars_ = self.exp_var_list(first)
                 inside = ",".join(vars_)
                 return f"E_{{{inside}}}({body})"
+            elif isinstance(first, Tree) and first.data == "cond_exp_var_list":
+                # Conditional subscript form: E_{y|y_pre}(formula)
+                # Tree children are [exp_var_list(lhs), exp_var_list(rhs)] (separator token hidden).
+                left_vars = self.exp_var_list(first.children[0])
+                right_vars = self.exp_var_list(first.children[1])
+                inside = ",".join(left_vars) + "|" + ",".join(right_vars)
+                return f"E_{{{inside}}}({body})"
             else:
                 # Fallback
                 return f"𝔼[{body}]"

@@ -48,6 +48,10 @@ class TestParseDecorator:
         tree = parse_decorator("@def ClOp(a,b)")
         assert tree is not None
 
+    def test_parse_def_linspace_constructor(self):
+        tree = parse_decorator("@def linspace(H_min, H_max, n_H)")
+        assert tree is not None
+
     def test_parse_def_primitive(self):
         tree = parse_decorator("@def R+")
         assert tree is not None
@@ -113,6 +117,12 @@ class TestGetDomainExpr:
 
     def test_get_constructor(self):
         tree = parse_decorator("@def ClOp(a,b)")
+        domain = get_domain_expr(tree)
+        assert domain is not None
+        assert domain.data == "constructor_call"
+
+    def test_get_constructor_linspace(self):
+        tree = parse_decorator("@def linspace(H_min, H_max, n_H)")
         domain = get_domain_expr(tree)
         assert domain is not None
         assert domain.data == "constructor_call"

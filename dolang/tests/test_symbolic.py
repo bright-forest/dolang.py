@@ -103,6 +103,25 @@ def test_expectation_subscript_form():
     assert s == "E_{y,z}(V[t] + x)"
 
 
+def test_expectation_conditional_subscript_form():
+    """Test conditional subscript form: E_{y|y_pre}(...)"""
+    from dolang.symbolic import parse_string, str_expression
+
+    e = parse_string("E_{y|y_pre}(V[t])")
+    assert e.data == "expectation"
+    assert len(e.children) == 2
+
+    cond = e.children[0]
+    assert cond.data == "cond_exp_var_list"
+    assert cond.children[0].data == "exp_var_list"
+    assert cond.children[1].data == "exp_var_list"
+    assert cond.children[0].children[0].value == "y"
+    assert cond.children[1].children[0].value == "y_pre"
+
+    s = str_expression(e)
+    assert s == "E_{y|y_pre}(V[t])"
+
+
 def test_expectation_legacy_form():
     """Test legacy function form: E_y(...) normalizes to expectation node"""
     from dolang.symbolic import parse_string, str_expression

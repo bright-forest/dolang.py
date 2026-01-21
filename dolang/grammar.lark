@@ -49,12 +49,14 @@ _EUSCORE.2: "E_" | "𝔼_"
 
 // helper for the variable list inside { ... }
 exp_var_list: NAME ("," NAME)*   -> exp_var_list
+cond_exp_var_list: exp_var_list _PERP exp_var_list  -> cond_exp_var_list
 
 // Expectation rule with three forms:
 // 1. Bracket form: E[...] or 𝔼[...]
 // 2. Subscript form: E_{y,z}(...) or 𝔼_{y,z}(...)
 // 3. Legacy function form: E_y(...) - normalized to expectation
 expectation: _EOPEN formula "]"                              -> expectation
+    | _EUSCORE "{" cond_exp_var_list "}" "(" formula ")"     -> expectation
     | _EUSCORE "{" exp_var_list "}" "(" formula ")"          -> expectation
     | EFUNCTION "(" formula ")"                              -> expectation
 
