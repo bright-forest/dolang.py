@@ -47,6 +47,8 @@ parser = Lark(
         "equation_block",
         "assignment_block",
         "complementarity_block",
+        "value_block",
+        "bound_constraint",
     ],
 )
 

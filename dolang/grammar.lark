@@ -1,10 +1,11 @@
-?start: equation | predicate
+?start: equation | predicate | bound_constraint
 
 ?equation: double_complementarity | equality | formula
 
 equation_block: _NEWLINE? (equation) (_NEWLINE equation )* _NEWLINE?
 complementarity_block: _NEWLINE? (double_complementarity | formula) (_NEWLINE double_complementarity | _NEWLINE formula )* _NEWLINE?
 assignment_block: _NEWLINE? assignment (_NEWLINE assignment )* _NEWLINE?
+value_block: _NEWLINE? (equation | bound_constraint) (_NEWLINE equation | _NEWLINE bound_constraint)* _NEWLINE?
 
 assignment: variable "=" formula
 
@@ -16,9 +17,11 @@ quantifier: "∀" "t" ","
 double_inequality: formula "<=" symbol "<=" formula
     | formula "<=" variable "<=" formula
 double_complementarity: formula _PERP double_inequality
+bound_constraint: _UPTACK double_inequality
 
 
 _PERP: "⟂" | "|"
+_UPTACK: "⊥"
 
 ?formula: sum
 ?sum: product
