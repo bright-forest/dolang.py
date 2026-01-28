@@ -7,7 +7,8 @@ complementarity_block: _NEWLINE? (double_complementarity | formula) (_NEWLINE do
 assignment_block: _NEWLINE? assignment (_NEWLINE assignment )* _NEWLINE?
 value_block: _NEWLINE? (equation | bound_constraint) (_NEWLINE equation | _NEWLINE bound_constraint)* _NEWLINE?
 
-assignment: variable "=" formula
+// Allow bare symbol or indexed variable on LHS of assignment (spec_0.1g)
+assignment: (variable | symbol) "=" formula
 
 equality: sum "=" sum 
     | sum "==" sum
@@ -37,11 +38,12 @@ _POW: "^"|"**"
 ?atom: NUMBER           -> number
         | "-" atom         -> neg
         | pow
-        | symbol            
+        | symbol
         | "(" sum ")"
         | expectation
         | call
         | maximization
+        | argmaximization
         | variable
 
 !symbol: NAME -> symbol
@@ -75,6 +77,15 @@ max_var_list: NAME ("," NAME)*   -> max_var_list
 maximization: _MAXUSCORE "{" max_var_list "}" "(" formula ")"  -> maximization
     | MAXIMIZE "{" formula "}"                                  -> maximization
 
+// --- Argmax opener (HIGH priority to prevent NAME from grabbing argmax_ prefix) ---
+_ARGMAXUSCORE.2: "argmax_"
+
+// Argmax rule with two forms:
+// 1. Subscript form: argmax_{c}(...) or argmax_{c,a}(...)
+// 2. Legacy brace form: argmax_c{...} - normalized to argmaximization
+argmaximization: _ARGMAXUSCORE "{" max_var_list "}" "(" formula ")"  -> argmaximization
+    | ARGMAXIMIZE "{" formula "}"                                    -> argmaximization
+
 variable: cname  "[" date_index "]" -> variable
         | cname "[" "t" "]" -> variable
         | cname "(" date_index ")" -> variable
@@ -88,6 +99,7 @@ subperiod: INT | NAME
 FUNCTION: "sin"|"cos"|"exp"|"log"
 EFUNCTION: /E_[A-Za-z][A-Za-z0-9_]*/
 MAXIMIZE: /max_[A-Za-z][A-Za-z0-9_]*/
+ARGMAXIMIZE: /argmax_[A-Za-z][A-Za-z0-9_]*/
 PERCH_TAG: /_[A-Za-z][A-Za-z0-9_]*/
 
 SIGNED_INT2: ("+"|"-") INT

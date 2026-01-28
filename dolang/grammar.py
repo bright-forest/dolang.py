@@ -240,6 +240,34 @@ class Printer(Interpreter):
             # Unexpected structure
             return f"max{{???}}"
 
+    def argmaximization(self, tree):
+        """Pretty-print argmaximization in one of two forms:
+        1. Subscript form: argmax_{c,a}(...) → children = [max_var_list, formula]
+        2. Legacy brace form: argmax_c{...} → children = [Token(ARGMAXIMIZE), formula]
+        """
+        children = tree.children
+
+        if len(children) == 2:
+            first = children[0]
+            body = self.visit(children[1])
+
+            if isinstance(first, Token) and first.type == "ARGMAXIMIZE":
+                # Legacy brace form: argmax_c{formula} → normalize to argmax_{c}(...)
+                # Extract variable name from argmax_c, argmax_ab, etc.
+                varname = first.value[7:]  # strip "argmax_" prefix
+                return f"argmax_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "max_var_list":
+                # Subscript form: argmax_{c,a}(formula)
+                vars_ = self.max_var_list(first)
+                inside = ",".join(vars_)
+                return f"argmax_{{{inside}}}({body})"
+            else:
+                # Fallback
+                return f"argmax{{???}}({body})"
+        else:
+            # Unexpected structure
+            return f"argmax{{???}}"
+
     def pow(self, tree):
         arg1 = self.visit(tree.children[0])
         arg2 = self.visit(tree.children[1])
