@@ -82,6 +82,29 @@ def mapping_get_required(m: Any, key: str) -> Any:
     return v
 
 
+def mapping_set(m: Any, key: str, value_node: Any) -> None:
+    """Set or update a key in a YAML MappingNode (or dict).
+
+    For MappingNode: if key exists, replaces the value node; otherwise appends.
+    For dict: simple assignment.
+    """
+    if isinstance(m, dict):
+        m[key] = value_node
+        return
+
+    if not isinstance(m, MappingNode):
+        raise TypeError(f"Expected MappingNode or dict, got {type(m)}")
+
+    for i, (k_node, _v_node) in enumerate(m.value):
+        if isinstance(k_node, ScalarNode) and k_node.value == key:
+            m.value[i] = (k_node, value_node)
+            return
+
+    # Key not found — append
+    new_key = ScalarNode(tag="tag:yaml.org,2002:str", value=key)
+    m.value.append((new_key, value_node))
+
+
 def sequence_values(s: Any) -> list[Any]:
     """Return children of a YAML SequenceNode (or list)."""
 
