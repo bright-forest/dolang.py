@@ -28,9 +28,46 @@ from dataclasses import dataclass
 ## later, this compatibility feature will be turned off.
 
 import os
+import re
 
 DIR_PATH, this_filename = os.path.split(__file__)
 DATA_PATH = os.path.join(DIR_PATH, "grammar.lark")
+
+
+# ---------------------------------------------------------------------------
+# Perch-tag glyph normalization (spec_0.1 v0.1)
+# ---------------------------------------------------------------------------
+# The preferred SYM surface tags are [<] (arrival) and [>] (continuation),
+# with the decision perch unmarked.  Arrow tags [<-], [-], [->] and named
+# tags [_arvl], [_dcsn], [_cntn] remain accepted aliases.
+#
+# Because the Lark lexer token PERCH_TAG only matches /_[A-Za-z]\w*/, we
+# normalize glyph/arrow tags to the canonical named form *before* Lark sees
+# the text.  Order matters: longer patterns first to prevent partial matches
+# (e.g. [<-] must be replaced before [<]).
+
+_PERCH_GLYPH_REPLACEMENTS = [
+    (re.compile(r'\[<-\]'), '[_arvl]'),
+    (re.compile(r'\[->\]'), '[_cntn]'),
+    (re.compile(r'\[-\]'),  '[_dcsn]'),
+    (re.compile(r'\[<\]'),  '[_arvl]'),
+    (re.compile(r'\[>\]'),  '[_cntn]'),
+]
+
+
+def normalize_perch_glyphs(text: str) -> str:
+    """Normalize glyph/arrow perch tags to canonical named tags.
+
+    Transforms:
+        [<]  → [_arvl]     [<-] → [_arvl]
+        [>]  → [_cntn]     [->] → [_cntn]
+                            [-]  → [_dcsn]
+
+    The canonical named tags [_arvl], [_dcsn], [_cntn] pass through unchanged.
+    """
+    for pattern, replacement in _PERCH_GLYPH_REPLACEMENTS:
+        text = pattern.sub(replacement, text)
+    return text
 
 grammar_0 = open(DATA_PATH, "rt", encoding="utf-8").read()
 
@@ -93,6 +130,9 @@ def parse_string(text, start=None):
 
     else:
         txt = text
+
+    # Normalize glyph/arrow perch tags → canonical named tags before Lark.
+    txt = normalize_perch_glyphs(txt)
 
     try:
         return parser.parse(txt, start)
