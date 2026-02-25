@@ -198,7 +198,12 @@ class Printer(Interpreter):
             time = int(raw)
         except Exception:
             # Dolo+ perch tags (e.g. `_dcsn`) print as-is: v[_dcsn].
-            return f"{name}[{raw}]"
+            base = f"{name}[{raw}]"
+            # Check for branch label (third child is a NAME Token)
+            if len(tree.children) >= 3 and isinstance(tree.children[2], Token):
+                branch_label = tree.children[2].value
+                return f"{base}[{branch_label}]"
+            return base
 
         if time == 0:
             ds = "t"
@@ -206,7 +211,12 @@ class Printer(Interpreter):
             ds = "t+" + str(time)
         else:
             ds = "t-" + str(-time)
-        return f"{name}[{ds}]"
+        base = f"{name}[{ds}]"
+        # Check for branch label (third child is a NAME Token)
+        if len(tree.children) >= 3 and isinstance(tree.children[2], Token):
+            branch_label = tree.children[2].value
+            return f"{base}[{branch_label}]"
+        return base
 
     def equality(self, tree):
         a = self.visit(tree.children[0])
@@ -253,28 +263,30 @@ class Printer(Interpreter):
         return [c.value for c in tree.children]
 
     def maximization(self, tree):
-        """Pretty-print maximization in one of two forms:
-        1. Subscript form: max_{c,a}(...) → children = [max_var_list, formula]
-        2. Legacy brace form: max_c{...} → children = [Token(MAXIMIZE), formula]
+        """Pretty-print maximization in one of three forms:
+        1. Subscript form: max_{c,a}(formula) → children = [max_var_list, formula]
+        2. Subscript form with alternatives: max_{d}(f1, f2) → children = [max_var_list, f1, f2]
+        3. Legacy brace form: max_c{...} → children = [Token(MAXIMIZE), formula]
         """
         children = tree.children
 
-        if len(children) == 2:
+        if len(children) >= 2:
             first = children[0]
-            body = self.visit(children[1])
 
             if isinstance(first, Token) and first.type == "MAXIMIZE":
                 # Legacy brace form: max_c{formula} → normalize to max_{c}(...)
-                # Extract variable name from max_c, max_ab, etc.
                 varname = first.value[4:]  # strip "max_" prefix
+                body = self.visit(children[1])
                 return f"max_{{{varname}}}({body})"
             elif isinstance(first, Tree) and first.data == "max_var_list":
-                # Subscript form: max_{c,a}(formula)
+                # Subscript form: max_{c,a}(formula, ...) — may have multiple alternatives
                 vars_ = self.max_var_list(first)
                 inside = ",".join(vars_)
-                return f"max_{{{inside}}}({body})"
+                bodies = [self.visit(c) for c in children[1:]]
+                return f"max_{{{inside}}}({', '.join(bodies)})"
             else:
                 # Fallback
+                body = self.visit(children[1])
                 return f"max{{???}}({body})"
         else:
             # Unexpected structure
@@ -307,6 +319,11 @@ class Printer(Interpreter):
         else:
             # Unexpected structure
             return f"argmax{{???}}"
+
+    def aggregate_call(self, tree):
+        head = tree.children[0].value  # e.g. "AGGREGATE_d"
+        args = [self.visit(c) for c in tree.children[1:]]
+        return f"{head}({'; '.join(args)})"
 
     def pow(self, tree):
         arg1 = self.visit(tree.children[0])
@@ -411,10 +428,12 @@ class Sanitizer(Transformer):
             return Tree("symbol", *args)
 
     def variable(self, *args):
-        if len(args[0]) == 1:
+        children = list(args[0])
+        if len(children) == 1:
             date = Tree("date", [Token("NUMBER", "0")])
-            args = (args[0] + [date],)
-        return Tree("variable", *args)
+            children = [children[0], date]
+        # Branch label (third child, a NAME Token) is preserved as-is
+        return Tree("variable", children)
 
 
 ## removes timing (replace v[t], v[t-1] or v[t+1] by v)
@@ -470,6 +489,7 @@ class Stringifier(Transformer):
         else:
             date = int(children[1].children[0].value)
         s = stringify_variable((name, date))
+        # Branch labels are dropped during stringification (code-gen level)
         return Tree("symbol", [Token("NAME", s)])
 
 
@@ -497,13 +517,14 @@ class TimeShifter(Transformer):
             new_date = "0"
         else:
             new_date = str(date + self.shift)
-        return Tree(
-            "variable",
-            [
-                Tree("name", [Token("NAME", name)]),
-                Tree("date", [Token("NUMBER", new_date)]),
-            ],
-        )
+        new_children = [
+            Tree("name", [Token("NAME", name)]),
+            Tree("date", [Token("NUMBER", new_date)]),
+        ]
+        # Preserve branch label (third child) if present
+        if len(children) >= 3:
+            new_children.append(children[2])
+        return Tree("variable", new_children)
 
 
 @dataclass
@@ -529,8 +550,14 @@ class VariablesLister(Visitor):
             date: int | str = int(raw)
         except Exception:
             date = raw
-        if (name, date) not in self.result.variables:
-            self.result.variables.append((name, date))
+        # Include branch label as third tuple element if present
+        if len(children) >= 3 and isinstance(children[2], Token):
+            branch_label = children[2].value
+            entry = (name, date, branch_label)
+        else:
+            entry = (name, date)
+        if entry not in self.result.variables:
+            self.result.variables.append(entry)
 
     def symbol(self, tree):
         children = tree.children

@@ -50,7 +50,21 @@ def build_native_perch_map(symbol_groups: Dict[str, List[str]]) -> Dict[str, str
             for name in names:
                 # Strip any existing index from symbol name (e.g., "V[_arvl]" -> "V")
                 bare_name = name.split('[')[0] if '[' in name else name
+                # Decision perch (_dcsn) is the default for bare names.
+                # Don't let later groups (e.g. poststates → _cntn) overwrite it.
+                if bare_name in native_perch and native_perch[bare_name] == '_dcsn':
+                    continue
                 native_perch[bare_name] = perch
+
+    # Values/values_marginal declared WITHOUT brackets resolve to _dcsn
+    # (decision perch is the natural default for "current" value function).
+    # Values declared WITH brackets (V[<], V[>]) require explicit indices.
+    for group in REQUIRES_EXPLICIT_INDEX:
+        if group in symbol_groups:
+            for name in symbol_groups[group]:
+                if '[' not in name:
+                    # Bare declaration: V, dV → native perch _dcsn
+                    native_perch[name] = '_dcsn'
 
     return native_perch
 
@@ -59,6 +73,10 @@ def build_requires_explicit_set(symbol_groups: Dict[str, List[str]]) -> Set[str]
     """
     Build a set of symbol names that require explicit perch indices.
 
+    Only names that are exclusively declared with bracket notation (e.g. V[<])
+    require explicit indices. If a bare declaration also exists (e.g. V without
+    brackets), the name resolves to _dcsn by default.
+
     Args:
         symbol_groups: {group_name: [symbol_names], ...}
 
@@ -66,13 +84,18 @@ def build_requires_explicit_set(symbol_groups: Dict[str, List[str]]) -> Set[str]
         Set of symbol names that require explicit indices
     """
     requires_explicit = set()
+    has_bare_decl = set()
 
     for group, names in symbol_groups.items():
         if group in REQUIRES_EXPLICIT_INDEX:
             for name in names:
-                # Extract base name (e.g., "V[_arvl]" -> "V")
                 bare_name = name.split('[')[0] if '[' in name else name
+                if '[' not in name:
+                    has_bare_decl.add(bare_name)
                 requires_explicit.add(bare_name)
+
+    # Names with bare declarations resolve via native_perch, not requires_explicit
+    requires_explicit -= has_bare_decl
 
     return requires_explicit
 

@@ -44,6 +44,7 @@ _POW: "^"|"**"
         | call
         | maximization
         | argmaximization
+        | aggregate_call
         | variable
 
 !symbol: NAME -> symbol
@@ -74,7 +75,7 @@ max_var_list: NAME ("," NAME)*   -> max_var_list
 // Maximization rule with two forms:
 // 1. Subscript form: max_{c}(...) or max_{c,a}(...)
 // 2. Legacy brace form: max_c{...} - normalized to maximization
-maximization: _MAXUSCORE "{" max_var_list "}" "(" formula ")"  -> maximization
+maximization: _MAXUSCORE "{" max_var_list "}" "(" formula ("," formula)* ")"  -> maximization
     | MAXIMIZE "{" formula "}"                                  -> maximization
 
 // --- Argmax opener (HIGH priority to prevent NAME from grabbing argmax_ prefix) ---
@@ -86,7 +87,12 @@ _ARGMAXUSCORE.2: "argmax_"
 argmaximization: _ARGMAXUSCORE "{" max_var_list "}" "(" formula ")"  -> argmaximization
     | ARGMAXIMIZE "{" formula "}"                                    -> argmaximization
 
-variable: cname  "[" date_index "]" -> variable
+// --- Aggregate binder (e.g. AGGREGATE_d(expr; params)) ---
+AGG_HEAD.2: /AGGREGATE_[A-Za-z_]\w*/
+aggregate_call: AGG_HEAD "(" sum (";" sum)* ")"
+
+variable: cname  "[" date_index "]" "[" NAME "]" -> variable
+        | cname  "[" date_index "]" -> variable
         | cname "[" "t" "]" -> variable
         | cname "(" date_index ")" -> variable
         | cname "[" "t$" subperiod "]"

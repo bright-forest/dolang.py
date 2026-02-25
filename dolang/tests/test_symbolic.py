@@ -342,3 +342,117 @@ def test_time_shift():
 
     enes = stringify(time_shift(e, +1))
     assert (enes) == "sin(a__2_ + b_ + a__1_ + f__0_ + f__5_ + a__2_)"
+
+
+# =====================================================================
+# spec_0.1l — chained subscript V[perch][branch_label]
+# =====================================================================
+
+def test_chained_subscript_parse():
+    """V[_cntn][work] parses → AST with 3 children (name, date, branch label)."""
+    from dolang.symbolic import parse_string
+    from lark.lexer import Token as LToken
+
+    e = parse_string("V[_cntn][work]")
+    assert e.data == "variable"
+    assert len(e.children) == 3
+    assert e.children[0].children[0].value == "V"      # name
+    assert e.children[1].children[0].value == "_cntn"   # date (perch tag)
+    assert isinstance(e.children[2], LToken)
+    assert e.children[2].value == "work"                # branch label
+
+
+def test_chained_subscript_roundtrip():
+    """Round-trip: str_expression(parse_string(...)) preserves chained subscript."""
+    from dolang.symbolic import parse_string, str_expression
+
+    assert str_expression(parse_string("V[_cntn][work]")) == "V[_cntn][work]"
+    assert str_expression(parse_string("V[_cntn][retire]")) == "V[_cntn][retire]"
+
+
+def test_chained_subscript_glyph():
+    """Glyph tags normalize correctly with branch label: V[>][work] → V[_cntn][work]."""
+    from dolang.symbolic import parse_string, str_expression
+
+    assert str_expression(parse_string("V[>][work]")) == "V[_cntn][work]"
+    assert str_expression(parse_string("V[<][x]")) == "V[_arvl][x]"
+
+
+def test_chained_subscript_variables_lister():
+    """VariablesLister includes branch label as third tuple element."""
+    from dolang.symbolic import parse_string
+    from dolang.grammar import VariablesLister
+
+    e = parse_string("V[_cntn][work] + V[_cntn][retire] + x[_dcsn]")
+    vl = VariablesLister()
+    vl.visit(e)
+    assert ("V", "_cntn", "work") in vl.result.variables
+    assert ("V", "_cntn", "retire") in vl.result.variables
+    assert ("x", "_dcsn") in vl.result.variables
+
+
+def test_chained_subscript_time_shift():
+    """TimeShifter preserves branch labels on time-shifted variables."""
+    from dolang.symbolic import parse_string, str_expression, time_shift
+
+    # Perch tags are not time-shifted, branch label preserved
+    e = parse_string("V[_cntn][work]")
+    shifted = time_shift(e, 1)
+    assert str_expression(shifted) == "V[_cntn][work]"
+
+
+def test_no_branch_label_regression():
+    """Variables without branch labels still work (regression)."""
+    from dolang.symbolic import parse_string, str_expression
+
+    assert str_expression(parse_string("V[_cntn]")) == "V[_cntn]"
+    assert str_expression(parse_string("x[t+1]")) == "x[t+1]"
+    assert str_expression(parse_string("a[t]")) == "a[t]"
+
+
+# =====================================================================
+# spec_0.1l — AGGREGATE binder
+# =====================================================================
+
+def test_aggregate_parse():
+    """AGGREGATE_d(expr; params) parses → aggregate_call node."""
+    from dolang.symbolic import parse_string
+
+    e = parse_string("AGGREGATE_d(V[_cntn]; sigma)")
+    assert e.data == "aggregate_call"
+    assert e.children[0].value == "AGGREGATE_d"
+    assert len(e.children) == 3  # head, arg1, arg2
+
+
+def test_aggregate_roundtrip():
+    """Round-trip for AGGREGATE binder."""
+    from dolang.symbolic import parse_string, str_expression
+
+    assert str_expression(parse_string("AGGREGATE_d(V[_cntn]; sigma)")) == \
+        "AGGREGATE_d(V[_cntn]; sigma)"
+
+
+def test_aggregate_with_branch_label():
+    """AGGREGATE works with chained subscripts."""
+    from dolang.symbolic import parse_string, str_expression
+
+    s = "AGGREGATE_d(V[_cntn][work] - delta; V[_cntn][retire])"
+    result = str_expression(parse_string(s))
+    assert "AGGREGATE_d" in result
+    assert "V[_cntn][work]" in result
+
+
+# =====================================================================
+# spec_0.1l — multi-alternative maximization
+# =====================================================================
+
+def test_maximization_multi_alternative():
+    """max_{d}(expr1, expr2) parses with multiple alternatives."""
+    from dolang.symbolic import parse_string, str_expression
+
+    e = parse_string("max_{d}(V[_cntn][work] - delta, V[_cntn][retire])")
+    assert e.data == "maximization"
+    s = str_expression(e)
+    assert "max_{d}" in s
+    assert "V[_cntn][work]" in s
+    assert "V[_cntn][retire]" in s
