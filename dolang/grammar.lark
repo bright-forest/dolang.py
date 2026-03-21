@@ -123,10 +123,11 @@ subperiod: INT | NAME
 ?date_index: "t" SIGNED_INT2 -> date
     | SIGNED_INT -> date
     | PERCH_TAG -> date
-// Function calls: built-in names + any user-defined NAME(...)
+// Function calls: built-in names + any user-defined NAME(...) or DERIV_VAR(...)
 // User functions are validated at compile time, not parse time.
 ?call: FUNCTION "(" sum ("," sum)* ")" -> call
      | NAME "(" sum ("," sum)* ")"     -> call
+     | DERIV_VAR "(" sum ("," sum)* ")" -> call
 FUNCTION: "sin"|"cos"|"exp"|"log"|"abs"|"sqrt"|"sign"|"min"|"max"|"floor"|"ceil"
 EFUNCTION: /E_[A-Za-z][A-Za-z0-9_]*/
 MAXIMIZE: /max_[A-Za-z][A-Za-z0-9_]*/
