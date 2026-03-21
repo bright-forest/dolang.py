@@ -255,8 +255,8 @@ class Printer(Interpreter):
 
     def call(self, tree):
         funname = tree.children[0].value
-        args = self.visit(tree.children[1])
-        return f"{funname}({args})"
+        args = [self.visit(c) for c in tree.children[1:]]
+        return f"{funname}({', '.join(args)})"
 
     def max_var_list(self, tree):
         """Extract variable names from max_var_list node."""
@@ -319,6 +319,23 @@ class Printer(Interpreter):
         else:
             # Unexpected structure
             return f"argmax{{???}}"
+
+    def solve_var_list(self, tree):
+        """Extract variable strings from solve_var_list node."""
+        return [self.visit(c) for c in tree.children]
+
+    def solve_eq_list(self, tree):
+        """Extract equation strings from solve_eq_list node."""
+        return [self.visit(c) for c in tree.children]
+
+    def solve_call(self, tree):
+        """Pretty-print solve_{vars}{eqs}."""
+        children = tree.children
+        vars_ = self.solve_var_list(children[0])
+        eqs_ = self.solve_eq_list(children[1])
+        var_str = ", ".join(vars_)
+        eq_str = ", ".join(eqs_)
+        return f"solve_{{{var_str}}}{{{eq_str}}}"
 
     def aggregate_call(self, tree):
         head = tree.children[0].value  # e.g. "AGGREGATE_d"

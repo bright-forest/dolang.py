@@ -44,10 +44,17 @@ _POW: "^"|"**"
         | call
         | maximization
         | argmaximization
+        | solve_call
         | aggregate_call
         | variable
 
+// Derivative-subscripted names: d_{a}V, d_{h_keep}V, D_{x}V etc.
+// Parsed as a single token whose value is the full string "d_{a}V".
+// Priority .2 prevents NAME from grabbing the "d" prefix.
+DERIV_VAR.2: ("d"|"D") "_{" /[A-Za-z_]\w*/ "}" /[A-Za-z]\w*/
+
 !symbol: NAME -> symbol
+       | DERIV_VAR -> symbol
 
 // --- Expectation openers (HIGH priority to prevent NAME from grabbing E_ prefix) ---
 _EOPEN.2: "E[" | "𝔼["
@@ -87,6 +94,20 @@ _ARGMAXUSCORE.2: "argmax_"
 argmaximization: _ARGMAXUSCORE "{" max_var_list "}" "(" formula ")"  -> argmaximization
     | ARGMAXIMIZE "{" formula "}"                                    -> argmaximization
 
+// --- Solve operator (implicit system: solve_{c[>], h[>]}{eq1, eq2}) ---
+_SOLVEUSCORE.2: "solve_"
+
+// The solve-for list accepts variables with perch tags (not bare names)
+solve_var_list: variable ("," variable)*   -> solve_var_list
+
+// Conditions are equalities or formulas, separated by commas.
+// Newlines inside the braces are allowed (treated as whitespace).
+solve_eq_list: _NL? equation (_NL? "," _NL? equation)* _NL?    -> solve_eq_list
+
+_NL: NEWLINE+
+
+solve_call: _SOLVEUSCORE "{" solve_var_list "}" "{" solve_eq_list "}"  -> solve_call
+
 // --- Aggregate binder (e.g. AGGREGATE_d(expr; params)) ---
 AGG_HEAD.2: /AGGREGATE_[A-Za-z_]\w*/
 aggregate_call: AGG_HEAD "(" sum (";" sum)* ")"
@@ -98,11 +119,15 @@ variable: cname  "[" date_index "]" "[" NAME "]" -> variable
         | cname "[" "t$" subperiod "]"
 subperiod: INT | NAME
 !cname: NAME -> name
+      | DERIV_VAR -> name
 ?date_index: "t" SIGNED_INT2 -> date
     | SIGNED_INT -> date
     | PERCH_TAG -> date
-?call: FUNCTION "(" sum ")" -> call
-FUNCTION: "sin"|"cos"|"exp"|"log"
+// Function calls: built-in names + any user-defined NAME(...)
+// User functions are validated at compile time, not parse time.
+?call: FUNCTION "(" sum ("," sum)* ")" -> call
+     | NAME "(" sum ("," sum)* ")"     -> call
+FUNCTION: "sin"|"cos"|"exp"|"log"|"abs"|"sqrt"|"sign"|"min"|"max"|"floor"|"ceil"
 EFUNCTION: /E_[A-Za-z][A-Za-z0-9_]*/
 MAXIMIZE: /max_[A-Za-z][A-Za-z0-9_]*/
 ARGMAXIMIZE: /argmax_[A-Za-z][A-Za-z0-9_]*/
