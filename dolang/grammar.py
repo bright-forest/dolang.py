@@ -52,6 +52,7 @@ _PERCH_GLYPH_REPLACEMENTS = [
     (re.compile(r'\[-\]'),  '[_dcsn]'),
     (re.compile(r'\[<\]'),  '[_arvl]'),
     (re.compile(r'\[>\]'),  '[_cntn]'),
+    (re.compile(r'\[~\]'),  '[_dcsn]'),
 ]
 
 
@@ -61,7 +62,7 @@ def normalize_perch_glyphs(text: str) -> str:
     Transforms:
         [<]  → [_arvl]     [<-] → [_arvl]
         [>]  → [_cntn]     [->] → [_cntn]
-                            [-]  → [_dcsn]
+        [~]  → [_dcsn]     [-]  → [_dcsn]
 
     The canonical named tags [_arvl], [_dcsn], [_cntn] pass through unchanged.
     """
