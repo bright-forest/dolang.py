@@ -18,17 +18,25 @@ def test_yaml_extension():
             b: 10
     """
 
-    import dolang  # monkey-patch yaml
-
     import yaml
 
     data = yaml.compose(txt)
 
-    assert "name" in data
-    assert "equation" not in data
+    from dolang.yaml_nodes import (
+        mapping_has,
+        mapping_get_required,
+        mapping_get,
+        mapping_keys,
+        sequence_values,
+    )
 
-    assert data["name"].value == "Model"
+    assert mapping_has(data, "name")
+    assert not mapping_has(data, "equation")
 
-    assert [e.value for e in data["symbols"]["controls"]] == ["alpha", "beta"]
+    assert mapping_get_required(data, "name").value == "Model"
 
-    assert [*data["symbols"].keys()] == ["controls", "states"]
+    symbols = mapping_get_required(data, "symbols")
+    controls = mapping_get_required(symbols, "controls")
+    assert [e.value for e in sequence_values(controls)] == ["alpha", "beta"]
+
+    assert mapping_keys(symbols) == ["controls", "states"]

@@ -1,0 +1,106 @@
+# Operation Registry (spec_0.1d)
+#
+# Catalog of registered scheme names for methodization validation.
+# Methods are NOT registered - only schemes are validated.
+#
+# This is a documentation/validation aid, not a gatekeeper.
+
+version: "0.1"
+
+# Registered schemes by category
+schemes:
+  # Expectation/integration schemes
+  expectation:
+    description: "Numerical integration for expectations over random variables"
+    expected_settings:
+      - n_nodes     # Number of quadrature nodes
+      - rule        # Quadrature rule (optional)
+    common_methods:
+      - "!gauss-hermite"
+      - "!gauss-legendre"
+      - "!monte-carlo"
+      - "!quasi-monte-carlo"
+
+  # Optimization schemes
+  maximization:
+    description: "Numerical optimization for argmax/max operations"
+    expected_settings:
+      - tol         # Tolerance
+      - maxit       # Maximum iterations
+      - bounds      # Search bounds (optional)
+    common_methods:
+      - "!golden-section"
+      - "!brent"
+      - "!grid-search"
+      - "!nelder-mead"
+
+  rootfinding:
+    description: "Root finding for FOC/Euler equations"
+    expected_settings:
+      - tol
+      - maxit
+    common_methods:
+      - "!brentq"
+      - "!newton"
+      - "!bisection"
+
+  # Approximation schemes
+  interpolation:
+    description: "Function approximation via interpolation"
+    expected_settings:
+      - extrapolation  # How to handle out-of-bounds
+    common_methods:
+      - "!linear"
+      - "!cubic"
+      - "!spline"
+      - "!chebyshev"
+
+  grid:
+    description: "Grid construction for discretization"
+    expected_settings:
+      - n           # Number of grid points
+      - grid_min    # Lower bound
+      - grid_max    # Upper bound
+    common_methods:
+      - "!cartesian"
+      - "!smolyak"
+      - "!random"
+
+  # Algorithm schemes (backward iteration)
+  bellman_backward:
+    description: "Backward iteration algorithm for value/policy functions"
+    expected_settings:
+      - tol         # Convergence tolerance
+      - maxit       # Maximum iterations
+    common_methods:
+      - "!vfi"      # Value function iteration
+      - "!egm"      # Endogenous grid method
+      - "!foc"      # First-order conditions
+
+  # Simulation schemes
+  simulation:
+    description: "Forward simulation for distribution evolution"
+    expected_settings:
+      - n_paths     # Number of simulation paths
+      - seed        # Random seed
+      - T           # Time horizon
+    common_methods:
+      - "!monte-carlo"
+      - "!histogram"
+      - "!young"    # Young (2010) non-stochastic simulation
+
+  # Distribution approximation
+  distribution:
+    description: "Distribution representation and evolution"
+    expected_settings:
+      - n_bins      # Number of histogram bins
+      - support     # Support bounds
+    common_methods:
+      - "!histogram"
+      - "!kernel-density"
+      - "!discrete-approximation"
+
+# Notes for implementers:
+# - Scheme names are validated against this registry (warnings only)
+# - Methods (YAML tags like !egm) are NOT validated - downstream interprets
+# - expected_settings are documentation only; not enforced at v0.1d

@@ -1,0 +1,102 @@
+version: "0.1"
+
+# Language-agnostic registry of DDSL primitives and decorator tokens.
+# v0.1 goal: identity + arity + basic structural validation (not full semantics).
+
+decorators:
+  "@in":
+    kind: membership
+    arity: 1
+    arg_kinds: ["domain_expr"]
+    description: "Set membership / typing constraint"
+
+  "@def":
+    kind: definition
+    arity: 1
+    arg_kinds: ["domain_expr"]
+    description: "Define a named space (domain)"
+
+  "@dist":
+    kind: distribution
+    arity: 1
+    arg_kinds: ["dist_constructor"]
+    description: "Distribution specification for exogenous shocks"
+
+primitive_objects:
+  domains:
+    "R":
+      description: "Real numbers"
+    "R+":
+      description: "Nonnegative reals [0, inf)"
+    "R++":
+      description: "Positive reals (0, inf)"
+    "Z":
+      description: "Integers"
+    "Z+":
+      description: "Nonnegative integers"
+
+  distributions:
+    "Normal":
+      arity: 2
+      arg_kinds: ["scalar", "scalar"]
+      description: "Gaussian with mean μ, std σ"
+    "LogNormal":
+      arity: 2
+      arg_kinds: ["scalar", "scalar"]
+      description: "Log-normal distribution"
+    "Uniform":
+      arity: 2
+      arg_kinds: ["scalar", "scalar"]
+      description: "Uniform on [a, b]"
+    "Beta":
+      arity: 2
+      arg_kinds: ["scalar", "scalar"]
+      description: "Beta distribution"
+    "UNormal":
+      arity: 1
+      arg_kinds: ["scalar"]
+      description: "Normal with mean 0, std σ (Dolo shorthand)"
+
+constructors:
+  "ClOp":
+    kind: domain_constructor
+    arity: 2
+    arg_kinds: ["scalar", "scalar"]
+    description: "Closed-open interval [a,b)"
+  "OpCl":
+    kind: domain_constructor
+    arity: 2
+    arg_kinds: ["scalar", "scalar"]
+    description: "Open-closed interval (a,b]"
+  "ClCl":
+    kind: domain_constructor
+    arity: 2
+    arg_kinds: ["scalar", "scalar"]
+    description: "Closed interval [a,b]"
+  "OpOp":
+    kind: domain_constructor
+    arity: 2
+    arg_kinds: ["scalar", "scalar"]
+    description: "Open interval (a,b)"
+  "linspace":
+    kind: domain_constructor
+    arity: 3
+    arg_kinds: ["scalar", "scalar", "scalar"]
+    description: "Linear grid constructor linspace(min, max, n) (Dolo+ convenience)"
+  "linspacec":
+    kind: domain_constructor
+    arity: 3
+    arg_kinds: ["scalar", "scalar", "scalar"]
+    description: "Linear grid constructor (closed) linspacec(min, max, n) (Dolo+ convenience)"
+
+# Aliases: alias -> canonical
+aliases:
+  "R_plus": "R+"
+  "R_plusplus": "R++"
+  "Z_plus": "Z+"
+
+# Identifier-safe forms: canonical -> identifier-safe token
+identifier_safe:
+  "R+": "R_plus"
+  "R++": "R_plusplus"
+  "Z+": "Z_plus"

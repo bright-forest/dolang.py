@@ -85,6 +85,8 @@ def eval_data(data: "yaml_structure", calibration={}):
     import warnings
     from yaml import MappingNode, SequenceNode, ScalarNode
 
+    from dolang.yaml_nodes import mapping_items, mapping_keys, mapping_get, sequence_values
+
     d = calibration.copy()
     d.update(functions)
 
@@ -118,7 +120,7 @@ def eval_data(data: "yaml_structure", calibration={}):
             raise ModelError(msg)
 
         # eval children
-        children = [eval_data(ch, calibration) for ch in data]
+        children = [eval_data(ch, calibration) for ch in sequence_values(data)]
 
         if tag == "tag:yaml.org,2002:seq":
             return children
@@ -146,7 +148,7 @@ def eval_data(data: "yaml_structure", calibration={}):
             objclass = LANG.get_from_tag(tag)
             signature = LANG.get_signature(tag)
             sigkeys = [*signature.keys()]
-            for a in data.keys():
+            for a in mapping_keys(data):
                 ## TODO account for repeated greek arguments
                 if (a not in sigkeys) and (
                     greek_translation.get(a, None) not in sigkeys
@@ -178,7 +180,7 @@ def eval_data(data: "yaml_structure", calibration={}):
 
         # eval children
         children = []
-        for key, ch in data.items():
+        for key, ch in mapping_items(data):
             evd = eval_data(ch, calibration=calibration)
             if tag != "tag:yaml.org,2002:map":
                 exptype = signature.get(key, None)
@@ -200,7 +202,7 @@ def eval_data(data: "yaml_structure", calibration={}):
                         raise ModelError(msg)
             children.append(evd)
 
-        kwargs = {k: v for (k, v) in zip(data.keys(), children)}
+        kwargs = {k: v for (k, v) in zip(mapping_keys(data), children)}
         if tag == "tag:yaml.org,2002:map":
             return kwargs
         else:
@@ -212,8 +214,10 @@ def eval_data(data: "yaml_structure", calibration={}):
 
 
 def eval_function(data, calibration):
-    args = tuple(data["arguments"])
-    content = copy.deepcopy(data["value"])
+    from dolang.yaml_nodes import mapping_get_required, sequence_values
+
+    args = tuple(sequence_values(mapping_get_required(data, "arguments")))
+    content = copy.deepcopy(mapping_get_required(data, "value"))
 
     def fun(x):
         calib = calibration.copy()

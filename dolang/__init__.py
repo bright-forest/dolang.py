@@ -1,5 +1,5 @@
 from dolang.version import __version_info__, __version__
-from dolang.yaml_tools import yaml
+import yaml
 
 from dolang.grammar import parse_string
 from dolang.grammar import (
@@ -10,3 +10,6 @@ from dolang.grammar import (
     steady_state,
 )
 from dolang.grammar import str_expression
+
+# DDSL registry (v0.1c)
+from dolang import registry

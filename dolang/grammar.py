@@ -28,9 +28,47 @@ from dataclasses import dataclass
 ## later, this compatibility feature will be turned off.
 
 import os
+import re
 
 DIR_PATH, this_filename = os.path.split(__file__)
 DATA_PATH = os.path.join(DIR_PATH, "grammar.lark")
+
+
+# ---------------------------------------------------------------------------
+# Perch-tag glyph normalization (spec_0.1 v0.1)
+# ---------------------------------------------------------------------------
+# The preferred SYM surface tags are [<] (arrival) and [>] (continuation),
+# with the decision perch unmarked.  Arrow tags [<-], [-], [->] and named
+# tags [_arvl], [_dcsn], [_cntn] remain accepted aliases.
+#
+# Because the Lark lexer token PERCH_TAG only matches /_[A-Za-z]\w*/, we
+# normalize glyph/arrow tags to the canonical named form *before* Lark sees
+# the text.  Order matters: longer patterns first to prevent partial matches
+# (e.g. [<-] must be replaced before [<]).
+
+_PERCH_GLYPH_REPLACEMENTS = [
+    (re.compile(r'\[<-\]'), '[_arvl]'),
+    (re.compile(r'\[->\]'), '[_cntn]'),
+    (re.compile(r'\[-\]'),  '[_dcsn]'),
+    (re.compile(r'\[<\]'),  '[_arvl]'),
+    (re.compile(r'\[>\]'),  '[_cntn]'),
+    (re.compile(r'\[~\]'),  '[_dcsn]'),
+]
+
+
+def normalize_perch_glyphs(text: str) -> str:
+    """Normalize glyph/arrow perch tags to canonical named tags.
+
+    Transforms:
+        [<]  → [_arvl]     [<-] → [_arvl]
+        [>]  → [_cntn]     [->] → [_cntn]
+        [~]  → [_dcsn]     [-]  → [_dcsn]
+
+    The canonical named tags [_arvl], [_dcsn], [_cntn] pass through unchanged.
+    """
+    for pattern, replacement in _PERCH_GLYPH_REPLACEMENTS:
+        text = pattern.sub(replacement, text)
+    return text
 
 grammar_0 = open(DATA_PATH, "rt", encoding="utf-8").read()
 
@@ -47,6 +85,8 @@ parser = Lark(
         "equation_block",
         "assignment_block",
         "complementarity_block",
+        "value_block",
+        "bound_constraint",
     ],
 )
 
@@ -69,10 +109,31 @@ def parse_string(text, start=None):
                 i2 = text.end_mark.pointer
                 txt = buffer[i1:i2]
                 if text.style in (">", "|"):
+                    # Drop the block-scalar indicator line (`|` or `>`) and anything
+                    # on that same line (including inline YAML comments).
+                    #
+                    # Example YAML:
+                    #   equations:
+                    #     transition: |  # comment
+                    #       x[t] = ...
+                    #
+                    # The raw buffer slice starts at the `|`, so after removing it we
+                    # still have `"  # comment\n  x[t] = ..."` which must not be fed
+                    # to the dolang grammar. We keep only the content after the first newline.
                     txt = txt[1:]
+                    nl = txt.find("\n")
+                    if nl != -1:
+                        # Preserve a leading newline so line numbers still align
+                        # with the YAML buffer (the indicator line counts as a line).
+                        txt = "\n" + txt[nl + 1 :]
+                    else:
+                        txt = "\n"
 
     else:
         txt = text
+
+    # Normalize glyph/arrow perch tags → canonical named tags before Lark.
+    txt = normalize_perch_glyphs(txt)
 
     try:
         return parser.parse(txt, start)
@@ -127,17 +188,36 @@ class Printer(Interpreter):
             sp = subperiod[0].children[0].value
             return f"{name}[t${sp}]"
 
+        # Vanilla dolang parses `x[t]` as a variable without an explicit date child.
+        if len(tree.children) < 2:
+            raw = "0"
+        else:
+            raw = tree.children[1].children[0].value
+
+        # Dolo timing (numeric indices) prints as v[t+k].
         try:
-            time = int(tree.children[1].children[0].value)
-        except:
-            time = 0
+            time = int(raw)
+        except Exception:
+            # Dolo+ perch tags (e.g. `_dcsn`) print as-is: v[_dcsn].
+            base = f"{name}[{raw}]"
+            # Check for branch label (third child is a NAME Token)
+            if len(tree.children) >= 3 and isinstance(tree.children[2], Token):
+                branch_label = tree.children[2].value
+                return f"{base}[{branch_label}]"
+            return base
+
         if time == 0:
             ds = "t"
         elif time > 0:
             ds = "t+" + str(time)
-        elif time < 0:
+        else:
             ds = "t-" + str(-time)
-        return f"{name}[{ds}]"
+        base = f"{name}[{ds}]"
+        # Check for branch label (third child is a NAME Token)
+        if len(tree.children) >= 3 and isinstance(tree.children[2], Token):
+            branch_label = tree.children[2].value
+            return f"{base}[{branch_label}]"
+        return base
 
     def equality(self, tree):
         a = self.visit(tree.children[0])
@@ -176,8 +256,92 @@ class Printer(Interpreter):
 
     def call(self, tree):
         funname = tree.children[0].value
-        args = self.visit(tree.children[1])
-        return f"{funname}({args})"
+        args = [self.visit(c) for c in tree.children[1:]]
+        return f"{funname}({', '.join(args)})"
+
+    def max_var_list(self, tree):
+        """Extract variable names from max_var_list node."""
+        return [c.value for c in tree.children]
+
+    def maximization(self, tree):
+        """Pretty-print maximization in one of three forms:
+        1. Subscript form: max_{c,a}(formula) → children = [max_var_list, formula]
+        2. Subscript form with alternatives: max_{d}(f1, f2) → children = [max_var_list, f1, f2]
+        3. Legacy brace form: max_c{...} → children = [Token(MAXIMIZE), formula]
+        """
+        children = tree.children
+
+        if len(children) >= 2:
+            first = children[0]
+
+            if isinstance(first, Token) and first.type == "MAXIMIZE":
+                # Legacy brace form: max_c{formula} → normalize to max_{c}(...)
+                varname = first.value[4:]  # strip "max_" prefix
+                body = self.visit(children[1])
+                return f"max_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "max_var_list":
+                # Subscript form: max_{c,a}(formula, ...) — may have multiple alternatives
+                vars_ = self.max_var_list(first)
+                inside = ",".join(vars_)
+                bodies = [self.visit(c) for c in children[1:]]
+                return f"max_{{{inside}}}({', '.join(bodies)})"
+            else:
+                # Fallback
+                body = self.visit(children[1])
+                return f"max{{???}}({body})"
+        else:
+            # Unexpected structure
+            return f"max{{???}}"
+
+    def argmaximization(self, tree):
+        """Pretty-print argmaximization in one of two forms:
+        1. Subscript form: argmax_{c,a}(...) → children = [max_var_list, formula]
+        2. Legacy brace form: argmax_c{...} → children = [Token(ARGMAXIMIZE), formula]
+        """
+        children = tree.children
+
+        if len(children) == 2:
+            first = children[0]
+            body = self.visit(children[1])
+
+            if isinstance(first, Token) and first.type == "ARGMAXIMIZE":
+                # Legacy brace form: argmax_c{formula} → normalize to argmax_{c}(...)
+                # Extract variable name from argmax_c, argmax_ab, etc.
+                varname = first.value[7:]  # strip "argmax_" prefix
+                return f"argmax_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "max_var_list":
+                # Subscript form: argmax_{c,a}(formula)
+                vars_ = self.max_var_list(first)
+                inside = ",".join(vars_)
+                return f"argmax_{{{inside}}}({body})"
+            else:
+                # Fallback
+                return f"argmax{{???}}({body})"
+        else:
+            # Unexpected structure
+            return f"argmax{{???}}"
+
+    def solve_var_list(self, tree):
+        """Extract variable strings from solve_var_list node."""
+        return [self.visit(c) for c in tree.children]
+
+    def solve_eq_list(self, tree):
+        """Extract equation strings from solve_eq_list node."""
+        return [self.visit(c) for c in tree.children]
+
+    def solve_call(self, tree):
+        """Pretty-print solve_{vars}{eqs}."""
+        children = tree.children
+        vars_ = self.solve_var_list(children[0])
+        eqs_ = self.solve_eq_list(children[1])
+        var_str = ", ".join(vars_)
+        eq_str = ", ".join(eqs_)
+        return f"solve_{{{var_str}}}{{{eq_str}}}"
+
+    def aggregate_call(self, tree):
+        head = tree.children[0].value  # e.g. "AGGREGATE_d"
+        args = [self.visit(c) for c in tree.children[1:]]
+        return f"{head}({'; '.join(args)})"
 
     def pow(self, tree):
         arg1 = self.visit(tree.children[0])
@@ -194,9 +358,49 @@ class Printer(Interpreter):
         a = self.visit(tree.children[0])
         return f"-({a})"
 
+    def exp_var_list(self, tree):
+        """Extract variable names from exp_var_list node."""
+        return [c.value for c in tree.children]
+
     def expectation(self, tree):
-        a = self.visit(tree.children[0])
-        return f"𝔼[ {a} ]"
+        """Pretty-print expectation in one of three forms:
+        1. Bracket form: E[...] → children = [formula]
+        2. Subscript form: E_{y,z}(...) → children = [exp_var_list, formula]
+        3. Legacy function form: E_y(...) → children = [Token(EFUNCTION), formula]
+        """
+        children = tree.children
+
+        if len(children) == 1:
+            # Bracket form: E[formula]
+            body = self.visit(children[0])
+            return f"𝔼[{body}]"
+        elif len(children) == 2:
+            first = children[0]
+            body = self.visit(children[1])
+
+            if isinstance(first, Token) and first.type == "EFUNCTION":
+                # Legacy function form: E_y(formula) → normalize to E_{y}(...)
+                # Extract variable name from E_y, E_shock, etc.
+                varname = first.value[2:]  # strip "E_" prefix
+                return f"E_{{{varname}}}({body})"
+            elif isinstance(first, Tree) and first.data == "exp_var_list":
+                # Subscript form: E_{y,z}(formula)
+                vars_ = self.exp_var_list(first)
+                inside = ",".join(vars_)
+                return f"E_{{{inside}}}({body})"
+            elif isinstance(first, Tree) and first.data == "cond_exp_var_list":
+                # Conditional subscript form: E_{y|y_pre}(formula)
+                # Tree children are [exp_var_list(lhs), exp_var_list(rhs)] (separator token hidden).
+                left_vars = self.exp_var_list(first.children[0])
+                right_vars = self.exp_var_list(first.children[1])
+                inside = ",".join(left_vars) + "|" + ",".join(right_vars)
+                return f"E_{{{inside}}}({body})"
+            else:
+                # Fallback
+                return f"𝔼[{body}]"
+        else:
+            # Unexpected structure
+            return f"𝔼[???]"
 
     def inequality(self, tree):
         a = self.visit(tree.children[0])
@@ -242,10 +446,12 @@ class Sanitizer(Transformer):
             return Tree("symbol", *args)
 
     def variable(self, *args):
-        if len(args[0]) == 1:
+        children = list(args[0])
+        if len(children) == 1:
             date = Tree("date", [Token("NUMBER", "0")])
-            args = (args[0] + [date],)
-        return Tree("variable", *args)
+            children = [children[0], date]
+        # Branch label (third child, a NAME Token) is preserved as-is
+        return Tree("variable", children)
 
 
 ## removes timing (replace v[t], v[t-1] or v[t+1] by v)
@@ -301,6 +507,7 @@ class Stringifier(Transformer):
         else:
             date = int(children[1].children[0].value)
         s = stringify_variable((name, date))
+        # Branch labels are dropped during stringification (code-gen level)
         return Tree("symbol", [Token("NAME", s)])
 
 
@@ -314,26 +521,34 @@ class TimeShifter(Transformer):
     def variable(self, children):
 
         name = children[0].children[0].value
+        # Vanilla dolang parses `x[t]` as a variable without an explicit date child.
+        if len(children) < 2:
+            raw = "0"
+        else:
+            raw = children[1].children[0].value
         try:
-            date = int(children[1].children[0].value)
-        except:
-            date = 0
+            date = int(raw)
+        except Exception:
+            # Dolo+ perch tags are not time-shifted here (leave unchanged).
+            return Tree("variable", children)
         if self.shift == "S":
             new_date = "0"
         else:
             new_date = str(date + self.shift)
-        return Tree(
-            "variable",
-            [
-                Tree("name", [Token("NAME", name)]),
-                Tree("date", [Token("NUMBER", new_date)]),
-            ],
-        )
+        new_children = [
+            Tree("name", [Token("NAME", name)]),
+            Tree("date", [Token("NUMBER", new_date)]),
+        ]
+        # Preserve branch label (third child) if present
+        if len(children) >= 3:
+            new_children.append(children[2])
+        return Tree("variable", new_children)
 
 
 @dataclass
 class SymbolList(dict):
-    variables: List[Tuple[str, int]]
+    # date index can be an int (vanilla Dolo timing) or a string (Dolo+ perch tags)
+    variables: List[Tuple[str, int | str]]
     parameters: List[str]
     functions: List[str]
 
@@ -348,9 +563,19 @@ class VariablesLister(Visitor):
         children = tree.children
 
         name = children[0].children[0].value
-        date = int(children[1].children[0].value)
-        if (name, date) not in self.result.variables:
-            self.result.variables.append((name, date))
+        raw = children[1].children[0].value
+        try:
+            date: int | str = int(raw)
+        except Exception:
+            date = raw
+        # Include branch label as third tuple element if present
+        if len(children) >= 3 and isinstance(children[2], Token):
+            branch_label = children[2].value
+            entry = (name, date, branch_label)
+        else:
+            entry = (name, date)
+        if entry not in self.result.variables:
+            self.result.variables.append(entry)
 
     def symbol(self, tree):
         children = tree.children
